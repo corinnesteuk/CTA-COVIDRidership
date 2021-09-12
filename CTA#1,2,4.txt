@@ -1,0 +1,139 @@
+
+import pandas as pd
+import datetime as dt
+
+ridership = pd.read_csv('C:/Users/corin/Desktop/COMP 231/Rosalind Projects/CTA_L_Ridership.csv')
+station = pd.read_csv('C:/Users/corin/Desktop/COMP 231/Rosalind Projects/CTA_L_System_Data.csv')
+
+
+df = ridership
+df.set_index('date', inplace = True) 
+df.index = pd.to_datetime(df.index, format = '%m/%d/%Y')
+df.index= df.index.strftime('%Y-%m-%d')
+
+def find_LoyolaStop(df):
+    '''function to return a dataframe with just the information about Loyola'''
+    df = df.drop ('station_id', 1)
+    df = df.drop ('daytype', 1)
+    #separate just the Loyola stop rows
+    df = df.query("stationname == 'Loyola'")
+    #the index of this DataFrame will be a MultiIndex of the date
+    index = df.index.values
+    i = 0
+    while i < len(index):
+        l = index[i].split('-')
+        l = tuple([int(l[0]), int(l[1]), int(l[2])])
+        index[i] = l
+        i+=1
+    i = pd.MultiIndex.from_tuples(index, names = ['year', 'month', 'day'])
+    df.index = i
+    df.sort_values(by=['year', 'month', 'day'], inplace= True)
+    df = df.drop ('stationname', 1)
+    df.rename(columns = {'rides':'# Station Entries'}, inplace = True)
+    return df
+loyola = find_LoyolaStop(df)
+
+#Problem1
+def annual_ridership(dataframe):
+    '''function to return the annual ridership for the Loyola Stop as a list'''
+    #sending through the Loyola Station function to only return Loyola's info
+    df = find_LoyolaStop(dataframe)
+    #group the years together and find the sum of rides for each year
+    year = df.groupby('year').sum()        
+    return year
+path = '/Users/corin/Desktop/COMP 231/Rosalind Projects/annual_ridership_Loyola1.xlsx'
+loyola_years = annual_ridership(ridership)
+loyola_years.to_excel(path)  
+
+
+
+def Loyola_Feb_Mar(df):
+    '''function to return only the February and March 2020 info for Loyola in a tuple'''
+    #find just the Loyola information out of complete dataset with other function
+    df = find_LoyolaStop(df)
+    #make two queries for when year is 2020 and month is either 2 or 3
+    feb_df = df.query("year == '2020' & month == '2'")
+    mar_df = df.query("year == '2020' & month == '3'")
+    #march was out of order, so we need to sort this by day 
+    mar_df = mar_df.sort_index(axis=0, level = ['day'])
+    return feb_df, mar_df
+#result is a tuple of February and March 2020 info for Loyola
+result = Loyola_Feb_Mar(ridership)
+print(result)
+def find_closed(d):
+    '''function to find an estimated closed date of Loyola in either February or March'''
+    march = d[1]
+    #sorting march again
+    march.sort_index(axis=0, level= 'day', ascending=True , inplace=True)
+    #find the substantially low days from the data set which is less than 100
+    march1 = march.loc[march['# Station Entries']<1000]
+    #find the first day that this low number occured
+    #we are assuming the closed date was about a week before this significant drop because
+    #Loyola gave students about a week to move out
+    closed = march1.index.values
+    closed = closed[0]
+    #subtracting a week
+    day = closed[2]-7
+    #assigning to new tuple
+    date = (closed[0], day, closed[2])
+    return date
+closed_date = find_closed(result)
+def problem2(x):
+    '''function to combine February and March, 
+    and to put them in a series to appear in the correct output format'''
+    d = {}
+    #concatenating february and march (they are separate values in a tuple right now)
+    march = x[1]
+    feb = x[0]
+    df = pd.concat([feb, march])
+    i = 0
+    indexes = list(df.index.values)
+    values = list(df['# Station Entries'].values)
+    while i < len(indexes):
+        #the date is in tuple form, so we are stripping and appending it to one string in the correct mm/dd/yyyy format
+        month, day, year = str(indexes[i][0]).strip('('), str(indexes[i][1]), str(indexes[i][2]).strip(')')
+        row_index = month + '/' + day + '/' + year
+        row_index = str(row_index)
+        row_value = values[i]
+        #appending to an empty dictionary
+        d[row_index] = row_value
+        i +=1
+    #appending the estimated day to the end of our dictionary
+    d['Estimated Day Loyola Closed'] = closed_date
+    new = pd.Series(d)
+    #titling
+    new.index.name = "Date"
+
+    return new
+
+a = problem2(result)
+path1 = '/Users/corin/Desktop/COMP 231/Rosalind Projects/annual_ridership_Loyola2.xlsx'
+a.to_excel(path1)
+
+
+'''#Problem 4'''
+#changing the dates to pandas datetimes
+ridership['date'] = pd.to_datetime(ridership['date'], infer_datetime_format = True)
+#only keeping the month
+ridership['date']=ridership['date'].dt.strftime('%Y-%m')
+#grouping the months together while summing the rides
+ridership=ridership.groupby(['date']).aggregate({'rides':'sum'})
+#first six months of 2019 is df1, df2 is for 2020
+df1 = ridership['2019-01' : '2019-06']
+sum1 = df1['rides'].sum()
+#summing the rides and multiplying by 2.5 to get revenue
+rev1 = sum1 * 2.5
+rev1 = '$'+str(rev1)
+df2 = ridership['2020-01' : '2020-06']
+sum2 = df2['rides'].sum()
+rev2 = sum2 * 2.5
+rev2 = '$'+str(rev2)
+sums = [sum1, sum2]
+revs = [rev1, rev2]
+#appending all information into a dataframe to output to an excel doc
+prob4 = pd.DataFrame({'# Station Entries' : sums, 'Revenue': revs}, index = ['1/1/2019-6/30/2019','1/1/2020-6/30/2020'])
+prob4.index.name ='Date Range'
+path2 = '/Users/corin/Desktop/COMP 231/Rosalind Projects/ridership_revenue.xlsx'
+prob4.to_excel(path2)
+
+

@@ -1,0 +1,68 @@
+'''CTA Problem 3'''
+import pandas as pd
+ridership = pd.read_csv('C:/Users/corin/Desktop/COMP 231/Rosalind Projects/CTA_L_Ridership.csv')
+station = pd.read_csv('C:/Users/corin/Desktop/COMP 231/Rosalind Projects/CTA_L_System_Data.csv')
+
+def dfr(df):
+    '''function to fix the ridership data'''
+    #setting the index to the station to be able to merge on the index
+    dfr = df.set_index('stationname')
+    #dropping unnecessary columns
+    dfr = dfr.drop(['station_id', 'daytype'], 1)
+    return dfr
+dfr = dfr(ridership)
+
+def dfs(df):
+    '''function to fix the station data'''
+    #dropping unnecessary columns
+    dfs = df.drop(['STOP_ID','STOP_NAME', 'DIRECTION_ID', 'MAP_ID', 'Location', 'ADA', 'STATION_DESCRIPTIVE_NAME'], 1)
+    #setting the index to the station to be able to merge on the index
+    dfs = dfs.set_index('STATION_NAME')
+    dfs.index.names = ['station']
+    #appending the column of what line the station is on called 'lines'
+    dfs = dfs[dfs == True]
+    dfs = (dfs == 1).idxmax(axis=1)
+    dfs = dfs.rename('lines')
+    return dfs
+dfs = dfs(station)
+
+# paths = '/Users/corin/Desktop/COMP 231/Rosalind Projects/DFS.xlsx'
+# dfs.to_excel(paths)
+#merging the two data sets on their indices
+merge = pd.merge(dfs, dfr, left_index = True, right_index = True)
+merge.index.names = ['station']
+
+#changing the dates to pandas datetimes
+merge['date'] = pd.to_datetime(merge['date'])
+
+#only keeping the month
+merge['date']=merge['date'].dt.strftime('%Y-%m')
+#grouping by the monthly date, then line, then station (to see what is happening)
+m = merge.groupby(['date', 'lines', 'station']).aggregate({'rides':'sum'})
+
+#only needing last five years
+m = merge.loc['2016-01':, :]
+#we only need the date and the lines
+m = m.groupby(['date', 'lines']).aggregate({'rides':'sum'})
+#unstacking data for presentation
+m = m.unstack()
+print(m)
+#creating a new sub-dataframe from the original merged to find the yearly increase/decrease
+m2 = merge
+m2 = m2.set_index('date')
+m2.index = pd.to_datetime(m2.index)
+index = m2.index
+#we only need the year
+m2.index = index.strftime('%Y')
+#aggregating the totals
+m2 = m2.groupby(by = 'date').aggregate({'rides':'sum'})
+m2 = m2.loc['2016':, :]
+#appending the change column to shouw the difference from previous row
+m2['change'] = m2.diff()
+
+
+writer = pd.ExcelWriter('monthly_ridership.xlsx', engine='xlsxwriter')
+m.to_excel(writer, sheet_name='Monthly Ridership by Line')
+m2.to_excel(writer, sheet_name='Yearly IncDec')
+
+writer.save()
